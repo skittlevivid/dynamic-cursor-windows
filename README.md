@@ -1,67 +1,70 @@
 # dynamic cursors for windows
 
-нативный порт популярного плагина [hypr-dynamic-cursors](https://github.com/VirtCode/hypr-dynamic-cursors) с linux (hyprland/wayland) на windows 10/11.
+native port of the popular [hypr-dynamic-cursors](https://github.com/VirtCode/hypr-dynamic-cursors) linux (hyprland/wayland) plugin to windows 10/11.
 
-динамические эффекты движения, наклона, растяжения, инерции и shake-to-find для твоего курсора без лагов, просадок фпс и внешних зависимостей.
+dynamic motion effects, tilt, rotation, stretch, inertia, and shake-to-find magnification for your mouse cursor with zero external dependencies.
 
----
-
-## возможности
-
-- **tilt (air drag)**: симуляция аэродинамического сопротивления воздуха. курсор плавно наклоняется в зависимости от скорости и вектора ускорения мыши.
-- **rotate (stick simulation)**: симуляция физического стержня. курсор реалистично волочится за хотспотом (точкой клика), поворачиваясь по ходу движения.
-- **stretch (squash & stretch)**: комиксная анимация растяжения и сжатия курсора вдоль вектора скорости.
-- **shake to find (macOS / KDE style)**: быстрое потряхивание мыши увеличивает курсор до заметного размера (настраивается до 6x) с настраиваемым таймером возврата в норму.
-- **полная поддержка кастомных паков (.cur, .ani, .png)**:
-  - закидывай любые `.cur` или анимированные `.ani` (со своими кадрами и задержками) прямо в папку `cursors/`.
-  - встроенный `filesystemwatcher` ловит любые изменения на лету — паки обновляются мгновенно без перезапуска.
-  - масштабирование базового размера курсора от 1 до 100.
-  - динамический рендеринг без обрезки и замыливания.
-- **умная интеграция с windows 10/11**:
-  - нулевой оверхед в простое (0% cpu, аппаратный dib-блиттинг, ~35 мб ram).
-  - умное распознавание системных окон (пуск, трей, контекстные меню) — никаких фантомных или сдвоенных курсоров.
-  - автоматическое скрытие системных курсоров и гарантированное восстановление при выходе или сбоях.
-- **удобный gui и системный трей**:
-  - иконка в трее с переключением режимов на лету.
-  - графическое окно настроек всех физических параметров, чувствительности и масштаба.
-  - горячие клавиши для моментального управления.
+> [!note]
+> **performance note:** on low-end devices, old cpus, or very weak hardware, the real-time physics simulation and overlay rendering may cause slight lag or stuttering.
 
 ---
 
-## горячие клавиши
+## features
 
-| хоткей | действие |
+- **tilt (air drag)**: simulates aerodynamic drag. cursor smoothly tilts based on mouse velocity and horizontal acceleration.
+- **rotate (stick simulation)**: simulates a rigid physical rod. cursor realistically trails behind the click hotspot, rotating along movement direction.
+- **stretch (squash & stretch)**: cartoon-style stretch dynamics along the velocity vector.
+- **shake to find (macos / kde style)**: rapidly shaking the mouse magnifies the cursor (customizable up to 6x) with a configurable return timeout.
+- **full custom cursor pack support (.cur, .ani, .png)**:
+  - drop any `.cur`, `.ani` (animated cursors with frames and frame rates), or `.png` files into `cursors/`.
+  - built-in `filesystemwatcher` reloads cursor assets on the fly with no restart required.
+  - customizable base scale from 1 to 100.
+  - dynamic scaling without clipping or blurriness.
+- **smart windows 10/11 shell integration**:
+  - zero idle overhead (0% cpu, persistent 32-bit dib blitting, ~35 mb ram).
+  - shell awareness: hides overlay seamlessly over start menu, system tray flyouts, and context menus to prevent double cursor overlap.
+  - automatic system cursor hiding and reliable restoration on exit or crash.
+- **system tray app & settings gui**:
+  - tray icon with live mode toggling.
+  - interactive settings window for all physics values, shake parameters, and cursor scaling.
+  - global hotkeys for instant control.
+
+---
+
+## hotkeys
+
+| hotkey | action |
 |---|---|
-| `ctrl + alt + q` | немедленный выход и восстановление системного курсора |
-| `ctrl + alt + d` | быстрое включение / выключение эффектов |
+| `ctrl + alt + q` | immediately exit and restore default windows cursor |
+| `ctrl + alt + d` | toggle dynamic cursor effects on / off |
 
 ---
 
-## установка и запуск
+## installation & usage
 
-### вариант 1: готовый билд
-1. скачай архив из [releases](../../releases).
-2. распакуй в любую удобную папку.
-3. запусти `run.bat` (или `dynamic-cursors.exe`).
-4. в системном трее появится иконка со всеми настройками.
+### option 1: prebuilt binary
+1. download the latest release from [releases](../../releases).
+2. extract the archive into any folder.
+3. launch `run.bat` (or `dynamic-cursors.exe`).
+4. look for the cursor icon in the system tray (near the clock).
 
-### вариант 2: сборка из исходников
-проект не требует установки visual studio или тяжелых sdk. сборка использует стандартный компилятор `csc.exe`, уже встроенный в любую windows 10/11:
+### option 2: build from source
+no heavy sdk or visual studio required. building uses the standard `csc.exe` compiler built into any windows 10/11 system:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+powershell -executionpolicy bypass -file .\build.ps1
 ```
 
-или просто запусти `build.bat`.
+or simply run `build.bat`.
 
 ---
 
-## структура папки
+## folder structure
 
 ```text
 dynamic-cursors/
-├── cursors/          # сюда кидать свои .cur, .ani и .png курсоры
-├── src/              # исходный код на c# (.net framework 4.5+)
+├── cursors/          # put your custom .cur, .ani, and .png cursors here
+├── src/              # c# source code (.net framework 4.5+)
 │   ├── Config.cs
 │   ├── CursorHook.cs
 │   ├── CursorRenderer.cs
@@ -70,43 +73,43 @@ dynamic-cursors/
 │   ├── Program.cs
 │   ├── SettingsForm.cs
 │   └── TrayContext.cs
-├── build.bat         # быстрая сборка
-├── build.ps1         # powershell-скрипт сборки
-├── run.bat           # запуск приложения
-├── restore.bat       # аварийный возврат системного курсора
+├── build.bat         # quick build script
+├── build.ps1         # powershell build script
+├── run.bat           # launch application
+├── restore.bat       # emergency restore cursor script
 └── README.md
 ```
 
 ---
 
-## кастомизация курсоров
+## custom cursor naming
 
-в папке `cursors/` поддерживаются следующие имена файлов (в формате `.cur`, `.ani` или `.png`):
+the following cursor file names are recognized inside `cursors/` (in `.cur`, `.ani`, or `.png` format):
 
-- `arrow` — основной указатель (дефолтная стрелка)
-- `link` — указатель ссылки (ладошка / рука)
-- `beam` / `ibeam` — текстовый курсор ввода
-- `cross` — перекрестие / прицел
-- `wait` — ожидание (песочные часы / колесо)
-- `sizewe` / `sizens` / `sizeall` / `sizenwse` / `sizenesw` — курсоры изменения размера окон
+- `arrow` — default pointer arrow
+- `link` — link pointer (hand)
+- `beam` / `ibeam` — text selection beam
+- `cross` — crosshair / precision pointer
+- `wait` — busy / wait cursor (sandglass or wheel)
+- `sizewe` / `sizens` / `sizeall` / `sizenwse` / `sizenesw` — window resize cursors
 
 ---
 
-## аварийное восстановление
+## emergency cursor restore
 
-если вдруг приложение было принудительно убито через диспетчер задач и курсор windows остался скрытым:
-- нажми `win + r`, введи команду и нажми enter:
+if the app was forcefully killed via task manager and your windows cursor remained hidden:
+- press `win + r`, enter one of the following commands and press enter:
   ```cmd
   restore.bat
   ```
-  или:
+  or:
   ```cmd
   dynamic-cursors.exe --restore
   ```
-- либо просто перезайди в систему (`ctrl + alt + del` -> выйти).
+- or simply sign out and sign back into windows (`ctrl + alt + del` -> sign out).
 
 ---
 
-## лицензия
+## license
 
-распространяется под лицензией [MIT](LICENSE).
+distributed under the [mit license](license).
