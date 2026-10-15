@@ -1,0 +1,24 @@
+# user local configuration and logs
+config.ini
+crash.log
+
+# build artifacts
+*.exe
+*.dll
+*.pdb
+*.obj
+*.log
+
+# temp and scratch files
+scratch/
+test_*
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# os generated files
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

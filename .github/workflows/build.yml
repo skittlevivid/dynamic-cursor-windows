@@ -1,0 +1,34 @@
+name: build dynamic cursors
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v4
+
+    - name: build dynamic-cursors.exe
+      shell: powershell
+      run: |
+        .\build.ps1
+
+    - name: upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dynamic-cursors-windows
+        path: |
+          dynamic-cursors.exe
+          build.bat
+          restore.bat
+          run.bat
+          cursors/
+          README.md
+          LICENSE
