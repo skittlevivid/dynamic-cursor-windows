@@ -1,0 +1,16 @@
+# ensure batch and powershell scripts always use CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# source code
+*.cs text eol=lf
+*.md text eol=lf
+*.ini text eol=crlf
+
+# binary files
+*.cur binary
+*.ani binary
+*.png binary
+*.ico binary
+*.exe binary
