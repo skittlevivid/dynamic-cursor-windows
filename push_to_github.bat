@@ -1,18 +1,38 @@
 @echo off
 chcp 65001 >nul
-title загрузка dynamic cursors на github
+title отправка dynamic cursors на github
+
+if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" (
+    set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%LOCALAPPDATA%\Programs\Git\mingw64\bin;%LOCALAPPDATA%\Programs\Git\usr\bin;%PATH%"
+    set "GCM_GIT_PATH=%LOCALAPPDATA%\Programs\Git\cmd\git.exe"
+) else if exist "C:\Program Files\Git\cmd\git.exe" (
+    set "PATH=C:\Program Files\Git\cmd;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;%PATH%"
+    set "GCM_GIT_PATH=C:\Program Files\Git\cmd\git.exe"
+)
+
 echo ===================================================
-echo     загрузка dynamic cursors на github
+echo     отправка dynamic cursors на github
 echo ===================================================
 echo.
-echo 1. открой браузер и перейди на: https://github.com/new
-echo 2. укажи имя репозитория (например: dynamic-cursors)
-echo 3. НЕ ставь галочки на README, .gitignore и License
-echo 4. нажми зеленую кнопку "Create repository"
-echo 5. скопируй ссылку (https://github.com/.../....git)
-echo.
-echo ===================================================
-set /p REPO_URL="вставь ссылку на свой репозиторий и нажми enter: "
+
+where git >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ошибка] git не найден на компьютере!
+    pause
+    exit /b 1
+)
+
+for /f "tokens=*" %%a in ('git remote get-url origin 2^>nul') do set "EXISTING_URL=%%a"
+
+if not "%EXISTING_URL%"=="" (
+    echo текущий репозиторий: %EXISTING_URL%
+    echo нажми enter чтобы отправить в него, либо вставь новую ссылку:
+    set /p REPO_URL="ссылка [по умолчанию текущая]: "
+    if "%REPO_URL%"=="" set "REPO_URL=%EXISTING_URL%"
+) else (
+    echo вставь ссылку на свой репозиторий github:
+    set /p REPO_URL="ссылка: "
+)
 
 if "%REPO_URL%"=="" (
     echo.
@@ -22,32 +42,22 @@ if "%REPO_URL%"=="" (
 )
 
 echo.
-echo [1/4] проверка git...
-where git >nul 2>&1
-if %errorlevel% neq 0 (
-    if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" (
-        set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%PATH%"
-    ) else if exist "C:\Program Files\Git\cmd\git.exe" (
-        set "PATH=C:\Program Files\Git\cmd;%PATH%"
-    )
-)
-
-where git >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ошибка] git не найден на компьютере!
-    pause
-    exit /b 1
-)
-
-echo [2/4] привязка репозитория...
+echo [1/3] привязка репозитория...
 git remote remove origin >nul 2>&1
 git remote add origin %REPO_URL%
-
-echo [3/4] переключение ветки на main...
 git branch -M main
 
-echo [4/4] отправка файлов на github...
+echo [2/3] сохранение изменений...
+git add .
+git commit -m "update" >nul 2>&1
+
+echo [3/3] отправка на github...
 git push -u origin main
+
+if %errorlevel% neq 0 (
+    echo [синхронизация] отправка с флагом --force...
+    git push -u origin main --force
+)
 
 if %errorlevel% equ 0 (
     echo.
@@ -56,7 +66,7 @@ if %errorlevel% equ 0 (
     echo ===================================================
 ) else (
     echo.
-    echo [внимание] если вылезло окно входа github - авторизуйся через браузер.
+    echo [ошибка] отправка не удалась. проверь интернет или права доступа.
 )
 
 pause
