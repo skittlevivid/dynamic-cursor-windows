@@ -397,26 +397,11 @@ namespace DynamicCursors
                     return true;
                 }
 
-                // If flags == 0 (hidden): check if a 3D/FPS game has locked/clipped mouse cursor
-                RECT clip;
-                if (GetClipCursor(out clip))
-                {
-                    int clipW = clip.Right - clip.Left;
-                    int clipH = clip.Bottom - clip.Top;
-                    // Locked to tiny box (FPS shooter captured mouse) -> hide cursor
-                    if (clipW > 0 && clipW <= 4 && clipH > 0 && clipH <= 4)
-                    {
-                        return false;
-                    }
-                }
-
-                // Not an FPS lock -> keep showing Arrow cursor (Start Menu, Windows shell UI, etc.)
-                shape = ci.hCursor != IntPtr.Zero ? IdentifyShape(ci.hCursor) : CursorShapeType.Arrow;
-                return true;
+                // Cursor is hidden by application (e.g. Roblox, FPS games, custom engine cursors)
+                return false;
             }
 
-            // Fallback: we have mouse pos, default to Arrow
-            return true;
+            return false;
         }
 
         private static CursorShapeType IdentifyShape(IntPtr hCursor)

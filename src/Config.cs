@@ -51,6 +51,7 @@ namespace DynamicCursors
 
         // General settings
         public float CursorScale { get; set; }
+        public string CursorPack { get; set; }
         public bool HideSystemCursor { get; set; }
         public int TargetFPS { get; set; }
         public bool Enabled { get; set; }
@@ -82,15 +83,30 @@ namespace DynamicCursors
             ShakeTimeoutMs = 550;
 
             CursorScale = 1.0f;
+            CursorPack = "";
             HideSystemCursor = true;
             TargetFPS = 120;
             Enabled = true;
         }
 
+        public static string GetAppDir()
+        {
+            try
+            {
+                string loc = typeof(AppConfig).Assembly.Location;
+                if (!string.IsNullOrEmpty(loc))
+                {
+                    string dir = Path.GetDirectoryName(loc);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
+                }
+            }
+            catch { }
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
         public static string GetConfigPath()
         {
-            string appDir = AppDomain.CurrentDomain.BaseDirectory;
-            return Path.Combine(appDir, "config.ini");
+            return Path.Combine(GetAppDir(), "config.ini");
         }
 
         public void Load()
@@ -179,6 +195,9 @@ namespace DynamicCursors
                         case "cursorscale":
                             { float cs; if (float.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out cs)) CursorScale = Math.Max(1.0f, Math.Min(100.0f, cs)); }
                             break;
+                        case "cursorpack":
+                            CursorPack = val;
+                            break;
                         case "hidesystemcursor":
                             { bool hsc; if (bool.TryParse(val, out hsc)) HideSystemCursor = hsc; }
                             break;
@@ -209,6 +228,7 @@ namespace DynamicCursors
                     sw.WriteLine("Mode=" + Mode);
                     sw.WriteLine("Activation=" + Activation);
                     sw.WriteLine("CursorScale=" + CursorScale.ToString(CultureInfo.InvariantCulture));
+                    sw.WriteLine("CursorPack=" + (CursorPack ?? ""));
                     sw.WriteLine("HideSystemCursor=" + HideSystemCursor);
                     sw.WriteLine("TargetFPS=" + TargetFPS);
                     sw.WriteLine();

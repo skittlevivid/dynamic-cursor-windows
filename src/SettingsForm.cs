@@ -22,6 +22,7 @@ namespace DynamicCursors
         private NumericUpDown _numCursorScale;
         private CheckBox _chkHideCursor;
         private NumericUpDown _numFPS;
+        private ComboBox _cbCursorPack;
 
         public SettingsForm(AppConfig config, OverlayWindow overlay)
         {
@@ -126,10 +127,13 @@ namespace DynamicCursors
             _numFPS = CreateNumber(30, 240, 10, 120);
             AddRow(pnlSys, "target fps (refresh rate):", _numFPS);
 
+            _cbCursorPack = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+            AddRow(pnlSys, "cursor pack (from cursors/):", _cbCursorPack);
+
             Button btnOpenFolder = new Button { Text = "Open Cursors Folder", Width = 160, Height = 30 };
             btnOpenFolder.Click += (s, e) =>
             {
-                string dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cursors");
+                string dir = System.IO.Path.Combine(AppConfig.GetAppDir(), "cursors");
                 if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
                 System.Diagnostics.Process.Start("explorer.exe", dir);
             };
@@ -167,6 +171,7 @@ namespace DynamicCursors
             {
                 SaveValues();
                 _config.Save();
+                _overlay.ReloadAssets();
                 _overlay.ResetPhysics();
                 Close();
             };
@@ -223,6 +228,29 @@ namespace DynamicCursors
             _numCursorScale.Value = Math.Max(1.0m, Math.Min(100.0m, (decimal)_config.CursorScale));
             _chkHideCursor.Checked = _config.HideSystemCursor;
             _numFPS.Value = _config.TargetFPS;
+
+            _cbCursorPack.Items.Clear();
+            var packs = CursorRenderer.GetAvailablePacks();
+            foreach (var p in packs)
+            {
+                _cbCursorPack.Items.Add(p);
+            }
+            int selectedPackIdx = 0;
+            if (!string.IsNullOrEmpty(_config.CursorPack))
+            {
+                for (int i = 0; i < _cbCursorPack.Items.Count; i++)
+                {
+                    if (string.Equals(_cbCursorPack.Items[i].ToString(), _config.CursorPack, StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedPackIdx = i;
+                        break;
+                    }
+                }
+            }
+            if (_cbCursorPack.Items.Count > 0)
+            {
+                _cbCursorPack.SelectedIndex = selectedPackIdx;
+            }
         }
 
         private void SaveValues()
@@ -240,6 +268,9 @@ namespace DynamicCursors
             _config.CursorScale = (float)_numCursorScale.Value;
             _config.HideSystemCursor = _chkHideCursor.Checked;
             _config.TargetFPS = (int)_numFPS.Value;
+            _config.CursorPack = (_cbCursorPack.SelectedIndex > 0 && _cbCursorPack.SelectedItem != null)
+                ? _cbCursorPack.SelectedItem.ToString()
+                : "";
         }
     }
 }

@@ -156,8 +156,6 @@ namespace DynamicCursors
         private bool _overlayCleared = false;
         private bool _wasInShellOrMenu = false;
         private long _lastForceHideCheckMs = 0;
-        private long _screenshotHideUntilMs = 0;
-        private static readonly System.Collections.Generic.Dictionary<uint, bool> _capturePidCache = new System.Collections.Generic.Dictionary<uint, bool>();
 
         public event Action RequestExit;
         public event Action<bool> ToggleEnabled;
@@ -165,7 +163,7 @@ namespace DynamicCursors
         public OverlayWindow(AppConfig config)
         {
             _config = config;
-            _renderer = new CursorRenderer();
+            _renderer = new CursorRenderer(_config.CursorPack);
             _tiltSim = new TiltSimulator();
             _rotateSim = new RotateSimulator();
             _stretchSim = new StretchSimulator();
@@ -175,8 +173,8 @@ namespace DynamicCursors
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
-            Location = new Point(-1000, -1000);
-            Size = new Size(512, 512);
+            Location = new Point(-2000, -2000);
+            Size = new Size(1024, 1024);
         }
 
         protected override CreateParams CreateParams
@@ -239,7 +237,7 @@ namespace DynamicCursors
 
         public void ReloadAssets()
         {
-            _renderer.LoadCustomAssets();
+            _renderer.LoadCustomAssets(_config.CursorPack);
         }
 
         public void ResetPhysics()
@@ -281,7 +279,7 @@ namespace DynamicCursors
             }
         }
 
-        private const int DIB_CANVAS_SIZE = 512;
+        private const int DIB_CANVAS_SIZE = 1024;
 
         private void EnsureDIB()
         {
@@ -417,61 +415,8 @@ namespace DynamicCursors
             }
         }
 
-        private static bool IsScreenCaptureProcess(uint pid)
-        {
-            bool isCapture;
-            lock (_capturePidCache)
-            {
-                if (!_capturePidCache.TryGetValue(pid, out isCapture))
-                {
-                    try
-                    {
-                        string name = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
-                        isCapture = (name.Contains("screenclipping") || name.Contains("snippingtool") || name.Contains("screensketch"));
-                    }
-                    catch
-                    {
-                        isCapture = false;
-                    }
-                    if (_capturePidCache.Count > 100) _capturePidCache.Clear();
-                    _capturePidCache[pid] = isCapture;
-                }
-            }
-            return isCapture;
-        }
-
         private void ProcessFrame(long nowMs)
         {
-            // Auto-hide when taking a screenshot (PrintScreen or Win+Shift+S)
-            if ((GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0)
-            {
-                _screenshotHideUntilMs = nowMs + 400;
-            }
-            else if (((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0) &&
-                     ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) &&
-                     ((GetAsyncKeyState(VK_S) & 0x8000) != 0))
-            {
-                _screenshotHideUntilMs = nowMs + 1000;
-            }
-
-            if (nowMs < _screenshotHideUntilMs)
-            {
-                ClearOverlay();
-                return;
-            }
-
-            IntPtr fg = GetForegroundWindow();
-            if (fg != IntPtr.Zero)
-            {
-                uint fgPid;
-                GetWindowThreadProcessId(fg, out fgPid);
-                if (fgPid != 0 && IsScreenCaptureProcess(fgPid))
-                {
-                    ClearOverlay();
-                    return;
-                }
-            }
-
             CursorHook.POINT pt;
             CursorShapeType shape;
             IntPtr hCursor;
@@ -484,6 +429,7 @@ namespace DynamicCursors
             bool inShellOrMenu = CursorHook.IsShellOrMenuWindow(pt);
             if (inShellOrMenu)
             {
+                ResetPhysics();
                 if (!_wasInShellOrMenu)
                 {
                     _wasInShellOrMenu = true;
@@ -495,6 +441,7 @@ namespace DynamicCursors
             else if (_wasInShellOrMenu)
             {
                 _wasInShellOrMenu = false;
+                ResetPhysics();
                 if (_config.HideSystemCursor)
                 {
                     CursorHook.ForceHideSystemCursors();

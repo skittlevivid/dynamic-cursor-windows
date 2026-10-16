@@ -121,8 +121,9 @@ namespace DynamicCursors
         [DllImport("gdi32.dll")]
         private static extern int GetObject(IntPtr hgdiobj, int cbBuffer, out BITMAP lpvObject);
 
-        private int _canvasSize = 512;
-        private int _center = 256;
+        private int _canvasSize = 1024;
+        private int _center = 512;
+        private string _currentPack = "";
 
         public int CanvasSize { get { return _canvasSize; } }
         public int Center { get { return _center; } }
@@ -137,18 +138,41 @@ namespace DynamicCursors
 
         public event Action CursorsAutoReloaded;
 
-        public CursorRenderer()
+        public CursorRenderer(string packName = null)
         {
-            _canvasSize = 512;
-            _center = 256;
+            _canvasSize = 1024;
+            _center = 512;
             _canvas = new Bitmap(_canvasSize, _canvasSize, PixelFormat.Format32bppPArgb);
             _graphics = Graphics.FromImage(_canvas);
             _graphics.SmoothingMode = SmoothingMode.AntiAlias;
             _graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             _graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            LoadCustomAssets();
+            _currentPack = packName ?? "";
+            LoadCustomAssets(_currentPack);
             SetupWatcher();
+        }
+
+        public static List<string> GetAvailablePacks()
+        {
+            List<string> packs = new List<string> { "Default (Root)" };
+            try
+            {
+                string dir = Path.Combine(AppConfig.GetAppDir(), "cursors");
+                if (Directory.Exists(dir))
+                {
+                    foreach (string sub in Directory.GetDirectories(dir))
+                    {
+                        string name = Path.GetFileName(sub);
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            packs.Add(name);
+                        }
+                    }
+                }
+            }
+            catch { }
+            return packs;
         }
 
         public void EnsureCanvasSize(int neededSize)
@@ -186,7 +210,7 @@ namespace DynamicCursors
         {
             try
             {
-                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cursors");
+                string dir = Path.Combine(AppConfig.GetAppDir(), "cursors");
                 if (!Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
@@ -196,6 +220,7 @@ namespace DynamicCursors
                 {
                     NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
                     Filter = "*.*",
+                    IncludeSubdirectories = true,
                     EnableRaisingEvents = true
                 };
 
@@ -209,7 +234,7 @@ namespace DynamicCursors
                         {
                             try
                             {
-                                LoadCustomAssets();
+                                LoadCustomAssets(_currentPack);
                                 if (CursorsAutoReloaded != null) CursorsAutoReloaded();
                             }
                             catch { }
@@ -225,8 +250,10 @@ namespace DynamicCursors
             catch { }
         }
 
-        public void LoadCustomAssets()
+        public void LoadCustomAssets(string packName = null)
         {
+            if (packName != null) _currentPack = packName;
+
             lock (_assets)
             {
                 foreach (var kv in _assets)
@@ -235,66 +262,107 @@ namespace DynamicCursors
                 }
                 _assets.Clear();
 
-                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cursors");
-                if (!Directory.Exists(dir)) return;
+                string baseDir = Path.Combine(AppConfig.GetAppDir(), "cursors");
+                if (!Directory.Exists(baseDir)) return;
+
+                string packDir = null;
+                if (!string.IsNullOrEmpty(_currentPack) && !_currentPack.Equals("Default (Root)", StringComparison.OrdinalIgnoreCase))
+                {
+                    string target = Path.Combine(baseDir, _currentPack);
+                    if (Directory.Exists(target))
+                    {
+                        packDir = target;
+                    }
+                }
 
                 // Flexible multi-candidate lookup for .cur, .ani, and .png (loads highest resolution frame up to 128x128)
-                _assets[CursorShapeType.Arrow] = LoadCurAniPng(dir,
-                    new string[] { "arrow.cur", "arrow.ani", "arrow_xl.cur", "arrow_l.cur", "pointer.cur", "pointer.ani", "normal.cur", "normal.ani", "default.cur", "pointer.png", "arrow.png" },
+                _assets[CursorShapeType.Arrow] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "normal select.cur", "normal select.ani", "normal.cur", "normal.ani", "arrow.cur", "arrow.ani", "arrow_xl.cur", "arrow_l.cur", "pointer.cur", "pointer.ani", "default.cur", "pointer.png", "arrow.png" },
                     4, 4, true);
 
-                _assets[CursorShapeType.Hand] = LoadCurAniPng(dir,
-                    new string[] { "link.cur", "link.ani", "link_xl.cur", "link_l.cur", "hand.cur", "hand.ani", "pointer.cur", "link.png", "hand.png" },
+                _assets[CursorShapeType.Hand] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "link select.cur", "link select.ani", "link.cur", "link.ani", "hand.cur", "hand.ani", "link_xl.cur", "link_l.cur", "pointer.cur", "link.png", "hand.png" },
                     10, 2, true);
 
-                _assets[CursorShapeType.IBeam] = LoadCurAniPng(dir,
-                    new string[] { "ibeam.cur", "ibeam.ani", "ibeam_xl.cur", "ibeam_l.cur", "text.cur", "text.ani", "beam.cur", "text.png", "ibeam.png" },
+                _assets[CursorShapeType.IBeam] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "text select.cur", "text select.ani", "text.cur", "text.ani", "ibeam.cur", "ibeam.ani", "ibeam_xl.cur", "ibeam_l.cur", "beam.cur", "text.png", "ibeam.png" },
                     15, 15, false);
 
-                _assets[CursorShapeType.Cross] = LoadCurAniPng(dir,
-                    new string[] { "cross.cur", "cross.ani", "cross_xl.cur", "cross_l.cur", "crosshair.cur", "crosshair.ani" },
+                _assets[CursorShapeType.Cross] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "precision select.cur", "precision select.ani", "precision.cur", "precision.ani", "cross.cur", "cross.ani", "cross_xl.cur", "cross_l.cur", "crosshair.cur", "crosshair.ani" },
                     15, 15, false);
 
-                _assets[CursorShapeType.SizeWE] = LoadCurAniPng(dir,
-                    new string[] { "ew.cur", "ew.ani", "ew_xl.cur", "ew_l.cur", "sizewe.cur", "horz.cur", "horz.png" },
+                _assets[CursorShapeType.SizeWE] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "horizontal resize.cur", "horizontal resize.ani", "horizontal.cur", "horizontal.ani", "ew.cur", "ew.ani", "ew_xl.cur", "ew_l.cur", "sizewe.cur", "horz.cur", "horz.png" },
                     15, 15, false);
 
-                _assets[CursorShapeType.SizeNS] = LoadCurAniPng(dir,
-                    new string[] { "ns.cur", "ns.ani", "ns_xl.cur", "ns_l.cur", "sizens.cur", "vert.cur", "vert.png" },
+                _assets[CursorShapeType.SizeNS] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "vertical resize.cur", "vertical resize.ani", "vertical.cur", "vertical.ani", "ns.cur", "ns.ani", "ns_xl.cur", "ns_l.cur", "sizens.cur", "vert.cur", "vert.png" },
                     15, 15, false);
 
-                _assets[CursorShapeType.SizeNWSE] = LoadCurAniPng(dir,
-                    new string[] { "nwse.cur", "nwse.ani", "nwse_xl.cur", "nwse_l.cur", "sizenwse.cur" },
+                _assets[CursorShapeType.SizeNWSE] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "diagonal resize 1.cur", "diagonal resize 1.ani", "nwse.cur", "nwse.ani", "nwse_xl.cur", "nwse_l.cur", "sizenwse.cur" },
                     15, 15, false);
 
-                _assets[CursorShapeType.SizeNESW] = LoadCurAniPng(dir,
-                    new string[] { "nesw.cur", "nesw.ani", "nesw_xl.cur", "nesw_l.cur", "sizenesw.cur" },
+                _assets[CursorShapeType.SizeNESW] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "diagonal resize 2.cur", "diagonal resize 2.ani", "nesw.cur", "nesw.ani", "nesw_xl.cur", "nesw_l.cur", "sizenesw.cur" },
                     15, 15, false);
 
-                _assets[CursorShapeType.SizeAll] = LoadCurAniPng(dir,
+                _assets[CursorShapeType.SizeAll] = LoadCurAniPng(packDir, baseDir,
                     new string[] { "move.cur", "move.ani", "move_xl.cur", "move_l.cur", "sizeall.cur", "size.cur" },
                     15, 15, false);
 
-                _assets[CursorShapeType.Wait] = LoadCurAniPng(dir,
-                    new string[] { "working.ani", "busy.ani", "working_xl.ani", "working_l.ani", "busy.cur", "working.cur", "wait.ani", "wait.cur" },
+                _assets[CursorShapeType.Wait] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "busy.ani", "busy.cur", "working in background.ani", "working in background.cur", "working.ani", "working_xl.ani", "working_l.ani", "wait.ani", "wait.cur" },
                     15, 15, false);
 
-                _assets[CursorShapeType.No] = LoadCurAniPng(dir,
-                    new string[] { "unavail.cur", "unavail.ani", "unavail_xl.cur", "unavail_l.cur", "no.cur", "no.ani" },
+                _assets[CursorShapeType.No] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "unavailable.cur", "unavailable.ani", "unavail.cur", "unavail.ani", "unavail_xl.cur", "unavail_l.cur", "no.cur", "no.ani" },
                     15, 15, false);
 
-                _assets[CursorShapeType.Help] = LoadCurAniPng(dir,
-                    new string[] { "helpsel.cur", "helpsel.ani", "helpsel_xl.cur", "helpsel_l.cur", "help.cur", "help.ani" },
+                _assets[CursorShapeType.Help] = LoadCurAniPng(packDir, baseDir,
+                    new string[] { "help select.cur", "help select.ani", "helpsel.cur", "helpsel.ani", "helpsel_xl.cur", "helpsel_l.cur", "help.cur", "help.ani" },
                     4, 4, true);
             }
         }
 
-        private CursorAsset LoadCurAniPng(string dir, string[] candidates, int fallbackHx, int fallbackHy, bool allowRot)
+        private static string FindFileCaseInsensitive(string dir, string candidate)
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return null;
+
+            string direct = Path.Combine(dir, candidate);
+            if (File.Exists(direct)) return direct;
+
+            try
+            {
+                string[] files = Directory.GetFiles(dir);
+                foreach (string f in files)
+                {
+                    if (string.Equals(Path.GetFileName(f), candidate, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return f;
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private CursorAsset LoadCurAniPng(string packDir, string baseDir, string[] candidates, int fallbackHx, int fallbackHy, bool allowRot)
         {
             foreach (string file in candidates)
             {
-                string path = Path.Combine(dir, file);
-                if (!File.Exists(path)) continue;
+                string path = null;
+                if (!string.IsNullOrEmpty(packDir))
+                {
+                    path = FindFileCaseInsensitive(packDir, file);
+                }
+                if (string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(baseDir))
+                {
+                    path = FindFileCaseInsensitive(baseDir, file);
+                }
+
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
 
                 string ext = Path.GetExtension(path).ToLowerInvariant();
 
