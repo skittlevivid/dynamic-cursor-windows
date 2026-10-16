@@ -104,6 +104,11 @@ namespace DynamicCursors
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
         private const int VK_SNAPSHOT = 0x2C;
         private const int VK_SHIFT = 0x10;
         private const int VK_LWIN = 0x5B;
@@ -155,7 +160,7 @@ namespace DynamicCursors
         private int _topmostCounter = 0;
         private bool _overlayCleared = false;
         private bool _wasInShellOrMenu = false;
-        private long _lastForceHideCheckMs = 0;
+        private long _snipCooldownUntilMs = 0;
 
         public event Action RequestExit;
         public event Action<bool> ToggleEnabled;
@@ -197,6 +202,13 @@ namespace DynamicCursors
 
             // Prevents Explorer from flickering or fighting over taskbar z-order
             SetProp(Handle, "NonRudeHWND", new IntPtr(1));
+
+            // Hardware-level exclude overlay from screenshots, snipping tool, OBS and video capture
+            try
+            {
+                SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
+            }
+            catch { }
 
             // Register Hotkeys: Ctrl+Alt+Q (Quit), Ctrl+Alt+D (Toggle)
             _hotkeysRegistered = RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT, (uint)Keys.Q) &&
@@ -417,6 +429,45 @@ namespace DynamicCursors
 
         private void ProcessFrame(long nowMs)
         {
+            // Immediate screenshot trigger (Win+Shift+S or PrtScn)
+            bool isSnipKey = (GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0 ||
+                             (((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0) &&
+                              ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) &&
+                              ((GetAsyncKeyState(VK_S) & 0x8000) != 0));
+            if (isSnipKey)
+            {
+                _snipCooldownUntilMs = nowMs + 700;
+                ResetPhysics();
+                ClearOverlay();
+                CursorHook.RestoreSystemCursors();
+                _wasInShellOrMenu = true;
+                return;
+            }
+
+            if (nowMs < _snipCooldownUntilMs)
+            {
+                ResetPhysics();
+                ClearOverlay();
+                CursorHook.RestoreSystemCursors();
+                _wasInShellOrMenu = true;
+                return;
+            }
+
+            IntPtr fg = GetForegroundWindow();
+            if (fg != IntPtr.Zero)
+            {
+                uint fgPid;
+                GetWindowThreadProcessId(fg, out fgPid);
+                if (fgPid != 0 && CursorHook.IsCaptureProcess(fgPid))
+                {
+                    ResetPhysics();
+                    ClearOverlay();
+                    CursorHook.RestoreSystemCursors();
+                    _wasInShellOrMenu = true;
+                    return;
+                }
+            }
+
             CursorHook.POINT pt;
             CursorShapeType shape;
             IntPtr hCursor;
@@ -446,12 +497,6 @@ namespace DynamicCursors
                 {
                     CursorHook.ForceHideSystemCursors();
                 }
-            }
-
-            if (_config.HideSystemCursor && (nowMs - _lastForceHideCheckMs > 3000))
-            {
-                _lastForceHideCheckMs = nowMs;
-                CursorHook.ForceHideSystemCursors();
             }
 
             _overlayCleared = false;

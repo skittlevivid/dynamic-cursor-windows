@@ -318,7 +318,11 @@ namespace DynamicCursors
                                        pname == "searchhost" ||
                                        pname == "searchapp" ||
                                        pname == "shellexperiencehost" ||
-                                       pname == "shellhost");
+                                       pname == "shellhost" ||
+                                       pname.Contains("screenclipping") ||
+                                       pname.Contains("snippingtool") ||
+                                       pname.Contains("screensketch") ||
+                                       pname.Contains("gamebarftserver"));
                         }
                         catch
                         {
@@ -336,9 +340,29 @@ namespace DynamicCursors
             }
         }
 
+        public static bool IsCaptureProcess(uint pid)
+        {
+            if (pid == 0) return false;
+            try
+            {
+                string pname = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
+                return pname.Contains("screenclipping") ||
+                       pname.Contains("snippingtool") ||
+                       pname.Contains("screensketch") ||
+                       pname.Contains("gamebarftserver");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static bool IsShellOrMenuClass(string cls)
         {
             if (string.IsNullOrEmpty(cls)) return false;
+
+            // Screen clipping / snipping host
+            if (cls == "ScreenClippingHost" || cls.IndexOf("SnippingTool", StringComparison.OrdinalIgnoreCase) >= 0) return true;
 
             // Taskbar and secondary taskbars
             if (cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd") return true;
