@@ -389,6 +389,8 @@ namespace DynamicCursors
         {
             if (g == null) return;
             float totalScale = result.Scale * (config != null ? config.CursorScale : 1.0f);
+            float maxScale = (canvasSize - 24) / 32.0f;
+            if (totalScale > maxScale) totalScale = maxScale;
             int center = canvasSize / 2;
 
             g.Clear(Color.Transparent);

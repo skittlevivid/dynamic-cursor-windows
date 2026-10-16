@@ -154,6 +154,7 @@ namespace DynamicCursors
         private float _lastStretchAngle = float.MinValue;
         private int _topmostCounter = 0;
         private bool _overlayCleared = false;
+        private bool _wasInShellOrMenu = false;
         private long _lastForceHideCheckMs = 0;
         private long _screenshotHideUntilMs = 0;
         private static readonly System.Collections.Generic.Dictionary<uint, bool> _capturePidCache = new System.Collections.Generic.Dictionary<uint, bool>();
@@ -175,7 +176,7 @@ namespace DynamicCursors
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(-1000, -1000);
-            Size = new Size(384, 384);
+            Size = new Size(512, 512);
         }
 
         protected override CreateParams CreateParams
@@ -203,6 +204,7 @@ namespace DynamicCursors
             _hotkeysRegistered = RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT, (uint)Keys.Q) &&
                                  RegisterHotKey(Handle, 2, MOD_CONTROL | MOD_ALT, (uint)Keys.D);
 
+            EnsureDIB();
             StartLoop();
         }
 
@@ -279,10 +281,13 @@ namespace DynamicCursors
             }
         }
 
-        private void EnsureDIB(int size)
+        private const int DIB_CANVAS_SIZE = 512;
+
+        private void EnsureDIB()
         {
-            size = Math.Max(384, size);
-            if (_hDIB != IntPtr.Zero && _dibSize >= size) return;
+            if (_hDIB != IntPtr.Zero) return;
+
+            int size = DIB_CANVAS_SIZE;
 
             CleanupDIB();
 
@@ -476,6 +481,26 @@ namespace DynamicCursors
                 return;
             }
 
+            bool inShellOrMenu = CursorHook.IsShellOrMenuWindow(pt);
+            if (inShellOrMenu)
+            {
+                if (!_wasInShellOrMenu)
+                {
+                    _wasInShellOrMenu = true;
+                    ClearOverlay();
+                    CursorHook.RestoreSystemCursors();
+                }
+                return;
+            }
+            else if (_wasInShellOrMenu)
+            {
+                _wasInShellOrMenu = false;
+                if (_config.HideSystemCursor)
+                {
+                    CursorHook.ForceHideSystemCursors();
+                }
+            }
+
             if (_config.HideSystemCursor && (nowMs - _lastForceHideCheckMs > 3000))
             {
                 _lastForceHideCheckMs = nowMs;
@@ -543,9 +568,7 @@ namespace DynamicCursors
             _lastStretchX = result.StretchX;
             _lastStretchAngle = result.StretchAngle;
 
-            float totalScale = result.Scale * (_config != null ? _config.CursorScale : 1.0f);
-            int needed = Math.Max(384, Math.Min(2048, ((int)(64 * totalScale * 2.2f + 127) / 128) * 128));
-            EnsureDIB(needed);
+            EnsureDIB();
 
             if (_dibGraphics != null && _hdcMem != IntPtr.Zero && _hdcScreen != IntPtr.Zero)
             {

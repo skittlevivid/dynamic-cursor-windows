@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Forms;
 
 namespace DynamicCursors
 {
@@ -266,6 +268,13 @@ namespace DynamicCursors
         {
             try
             {
+                // 1. Taskbar bounds check: if mouse is outside WorkingArea, it is directly on taskbar or system tray!
+                var screen = Screen.FromPoint(new Point(pt.x, pt.y));
+                if (screen != null && !screen.WorkingArea.Contains(pt.x, pt.y))
+                {
+                    return true;
+                }
+
                 IntPtr hwnd = WindowFromPoint(pt);
                 if (hwnd == IntPtr.Zero) return false;
 
@@ -276,10 +285,10 @@ namespace DynamicCursors
                 GetWindowThreadProcessId(rootHwnd, out pid);
                 if (pid == 0) return false;
 
-                // 1. Any window belonging to our own process (Tray context menu, Settings form)
+                // 2. Any window belonging to our own process (Tray context menu, Settings form)
                 if (pid == CurrentPid) return true;
 
-                // 2. Class name checks (context menus, tray overflow flyouts)
+                // 3. Class name checks (taskbar, tray, flyouts, start menu, context menus)
                 lock (ClassNameBuffer)
                 {
                     ClassNameBuffer.Length = 0;
@@ -296,7 +305,7 @@ namespace DynamicCursors
                     }
                 }
 
-                // 3. Process check (cached)
+                // 4. Process check (cached)
                 bool isShell;
                 lock (ShellPidCache)
                 {
@@ -331,10 +340,19 @@ namespace DynamicCursors
         {
             if (string.IsNullOrEmpty(cls)) return false;
 
+            // Taskbar and secondary taskbars
+            if (cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd") return true;
+
+            // Windows 11 System Tray and notification area
+            if (cls == "SystemTray_Main" || cls == "TrayNotifyWnd" || cls == "TrayClockWClass" || cls == "TrayDummySearchControl") return true;
+
             // Win32 context menus & modern XAML popups
             if (cls == "#32768" || cls == "Xaml_WindowedPopupClass") return true;
 
-            // Tray overflow flyouts
+            // Windows 10/11 Start Menu, Action Center, Quick Settings, Search
+            if (cls == "Windows.UI.Core.CoreWindow" || cls.IndexOf("DesktopWindowXamlSource", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            // Tray overflow flyouts (^ button)
             if (cls.IndexOf("NotifyIconOverflowWindow", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 cls.IndexOf("TopLevelWindowForOverflow", StringComparison.OrdinalIgnoreCase) >= 0)
             {
