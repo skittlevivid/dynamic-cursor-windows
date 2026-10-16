@@ -34,3 +34,52 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "build failed with exit code $LASTEXITCODE" -ForegroundColor Red
     exit $LASTEXITCODE
 }
+
+# Compile standalone installer
+$installerSource = Join-Path $PSScriptRoot "installer\Setup.cs"
+if (Test-Path $installerSource) {
+    $setupExe = Join-Path $PSScriptRoot "dynamic-cursors-setup.exe"
+    $payloadZip = Join-Path $PSScriptRoot "payload.zip"
+
+    Write-Host "packaging installer payload..." -ForegroundColor Cyan
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $staging = Join-Path $env:TEMP ("dc_staging_" + [Guid]::NewGuid().ToString("N"))
+    if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+    New-Item -ItemType Directory -Path $staging | Out-Null
+    Copy-Item $outputExe $staging -Force
+    Copy-Item (Join-Path $PSScriptRoot "config.ini") $staging -Force
+    Copy-Item (Join-Path $PSScriptRoot "README.md") $staging -Force
+    Copy-Item (Join-Path $PSScriptRoot "LICENSE") $staging -Force
+    Copy-Item (Join-Path $PSScriptRoot "cursors") $staging -Recurse -Force
+
+    if (Test-Path $payloadZip) { Remove-Item $payloadZip -Force }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($staging, $payloadZip)
+    Remove-Item $staging -Recurse -Force
+
+    Write-Host "compiling dynamic cursors installer..." -ForegroundColor Cyan
+    $setupParams = @(
+        "/nologo",
+        "/target:winexe",
+        "/platform:anycpu",
+        "/optimize+",
+        "/r:System.dll",
+        "/r:System.Drawing.dll",
+        "/r:System.Windows.Forms.dll",
+        "/r:System.IO.Compression.dll",
+        "/r:System.IO.Compression.FileSystem.dll",
+        "/r:Microsoft.CSharp.dll",
+        "/res:$payloadZip,payload.zip",
+        "/out:$setupExe",
+        $installerSource
+    )
+
+    & $csc $setupParams
+    if (Test-Path $payloadZip) { Remove-Item $payloadZip -Force }
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "installer build successful: $setupExe" -ForegroundColor Green
+    } else {
+        Write-Host "installer build failed with exit code $LASTEXITCODE" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}

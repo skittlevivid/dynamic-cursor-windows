@@ -42,11 +42,11 @@ dynamic motion effects, tilt, rotation, stretch, inertia, and shake-to-find magn
 
 ## installation & usage
 
-### option 1: prebuilt binary
-1. download the latest release from [releases](../../releases).
-2. extract the archive into any folder.
-3. launch `run.bat` (or `dynamic-cursors.exe`).
-4. look for the cursor icon in the system tray (near the clock).
+### option 1: installer (recommended)
+1. download `dynamic-cursors-setup.exe` from [releases](../../releases).
+2. run the setup executable.
+3. select options (desktop shortcut, start menu shortcut, run on windows startup).
+4. click install — it configures everything and launches automatically!
 
 ### option 2: build from source
 no heavy sdk or visual studio required. building uses the standard `csc.exe` compiler built into any windows 10/11 system:
@@ -54,8 +54,6 @@ no heavy sdk or visual studio required. building uses the standard `csc.exe` com
 ```powershell
 powershell -executionpolicy bypass -file .\build.ps1
 ```
-
-or simply run `build.bat`.
 
 ---
 
@@ -73,10 +71,7 @@ dynamic-cursors/
 │   ├── Program.cs
 │   ├── SettingsForm.cs
 │   └── TrayContext.cs
-├── build.bat         # quick build script
 ├── build.ps1         # powershell build script
-├── run.bat           # launch application
-├── restore.bat       # emergency restore cursor script
 └── README.md
 ```
 

@@ -22,3 +22,9 @@ obj/
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# script and archive files
+*.bat
+*.zip
+*.cmd
+
