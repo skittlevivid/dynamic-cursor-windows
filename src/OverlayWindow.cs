@@ -160,6 +160,9 @@ namespace DynamicCursors
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern uint RegisterWindowMessage(string lpString);
 
+        public static Form ActiveSettingsForm = null;
+        private bool _wasInSettings = false;
+
         public static readonly uint WM_SHOW_SETTINGS = RegisterWindowMessage("DYNAMIC_CURSORS_SHOW_SETTINGS");
 
         private int _topmostCounter = 0;
@@ -436,6 +439,42 @@ namespace DynamicCursors
 
         private void ProcessFrame(long nowMs)
         {
+            // If mouse is inside active settings form, yield completely to native WinForms!
+            bool inSettings = false;
+            if (ActiveSettingsForm != null && !ActiveSettingsForm.IsDisposed && ActiveSettingsForm.Visible && ActiveSettingsForm.WindowState != FormWindowState.Minimized)
+            {
+                CursorHook.POINT curPt;
+                if (CursorHook.GetCursorPos(out curPt))
+                {
+                    if (ActiveSettingsForm.Bounds.Contains(curPt.x, curPt.y))
+                    {
+                        inSettings = true;
+                    }
+                }
+            }
+
+            if (inSettings)
+            {
+                if (!_wasInSettings)
+                {
+                    _wasInSettings = true;
+                    ResetPhysics();
+                    ClearOverlay();
+                    CursorHook.RestoreSystemCursors();
+                }
+                ClearOverlay();
+                return;
+            }
+            else if (_wasInSettings)
+            {
+                _wasInSettings = false;
+                ResetPhysics();
+                if (_config.HideSystemCursor)
+                {
+                    CursorHook.ForceHideSystemCursors();
+                }
+            }
+
             // Immediate screenshot trigger (Win+Shift+S or PrtScn)
             bool isSnipKey = (GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0 ||
                              (((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0) &&
@@ -580,7 +619,7 @@ namespace DynamicCursors
             }
 
             // Silently re-assert topmost order periodically without SWP_SHOWWINDOW
-            if (++_topmostCounter >= 240)
+            if (++_topmostCounter >= 30)
             {
                 _topmostCounter = 0;
                 if (IsHandleCreated && !IsDisposed)

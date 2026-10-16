@@ -466,12 +466,17 @@ namespace DynamicCursors
             {
                 try
                 {
-                    if (ii.xHotspot <= 5 && ii.yHotspot <= 5)
-                        return CursorShapeType.Arrow;
-                    if (ii.xHotspot >= 7 && ii.xHotspot <= 14 && ii.yHotspot <= 4)
+                    // Check Hand FIRST: index finger hotspot (HotX >= 5, HotY <= 6)
+                    if (ii.xHotspot >= 5 && ii.xHotspot <= 20 && ii.yHotspot <= 6)
                         return CursorShapeType.Hand;
+
+                    // IBeam is center-aligned
                     if (ii.xHotspot >= 12 && ii.xHotspot <= 18 && ii.yHotspot >= 12 && ii.yHotspot <= 18)
                         return CursorShapeType.IBeam;
+
+                    // Arrow is top-left
+                    if (ii.xHotspot <= 5 && ii.yHotspot <= 5)
+                        return CursorShapeType.Arrow;
                 }
                 finally
                 {

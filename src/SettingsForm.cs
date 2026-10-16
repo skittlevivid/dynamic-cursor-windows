@@ -60,6 +60,7 @@ namespace DynamicCursors
         {
             _config = config;
             _overlay = overlay;
+            OverlayWindow.ActiveSettingsForm = this;
 
             Text = "dynamic cursors settings";
             ClientSize = new Size(760, 540);
@@ -829,6 +830,20 @@ namespace DynamicCursors
             _chkHideCursor.Checked = def.HideSystemCursor;
             _numFPS.Value = def.TargetFPS;
             _cbCursorPack.SelectedIndex = 0; // Windows Active Scheme
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            OverlayWindow.ActiveSettingsForm = null;
+            if (_overlay != null)
+            {
+                _overlay.ResetPhysics();
+                if (_config.HideSystemCursor)
+                {
+                    CursorHook.ForceHideSystemCursors();
+                }
+            }
+            base.OnFormClosed(e);
         }
 
         // Live interactive preview control
