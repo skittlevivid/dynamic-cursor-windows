@@ -77,7 +77,6 @@ namespace DynamicCursors
         private ContextMenuStrip BuildContextMenu()
         {
             ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Opened += (s, e) => _overlay.ClearOverlay();
             menu.Closed += (s, e) =>
             {
                 if (_config.HideSystemCursor)

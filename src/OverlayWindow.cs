@@ -93,7 +93,9 @@ namespace DynamicCursors
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetProp(IntPtr hWnd, string lpString, IntPtr hData);
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -139,7 +141,6 @@ namespace DynamicCursors
         private float _lastStretchAngle = float.MinValue;
         private int _topmostCounter = 0;
         private bool _overlayCleared = false;
-        private bool _wasInShellOrMenu = false;
         private long _lastForceHideCheckMs = 0;
 
         public event Action RequestExit;
@@ -180,8 +181,12 @@ namespace DynamicCursors
         {
             base.OnHandleCreated(e);
 
-            // Prevents Explorer from flickering or popping up the taskbar over fullscreen apps
-            SetProp(Handle, "NonRudeHWND", new IntPtr(1));
+            // Exclude overlay from screen capture (Snipping Tool, Win+Shift+S, OBS, PrintScreen)
+            try
+            {
+                SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
+            }
+            catch { }
 
             // Register Hotkeys: Ctrl+Alt+Q (Quit), Ctrl+Alt+D (Toggle)
             _hotkeysRegistered = RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT, (uint)Keys.Q) &&
@@ -265,7 +270,8 @@ namespace DynamicCursors
 
         private void EnsureDIB(int size)
         {
-            if (_hDIB != IntPtr.Zero && _dibSize == size) return;
+            size = Math.Max(768, size);
+            if (_hDIB != IntPtr.Zero && _dibSize >= size) return;
 
             CleanupDIB();
 
@@ -406,22 +412,6 @@ namespace DynamicCursors
                 return;
             }
 
-            bool inShellOrMenu = CursorHook.IsShellOrMenuWindow(pt);
-            if (inShellOrMenu)
-            {
-                _wasInShellOrMenu = true;
-                ClearOverlay();
-                return;
-            }
-            else if (_wasInShellOrMenu)
-            {
-                _wasInShellOrMenu = false;
-                if (_config.HideSystemCursor)
-                {
-                    CursorHook.ForceHideSystemCursors();
-                }
-            }
-
             if (_config.HideSystemCursor && (nowMs - _lastForceHideCheckMs > 3000))
             {
                 _lastForceHideCheckMs = nowMs;
@@ -490,7 +480,7 @@ namespace DynamicCursors
             _lastStretchAngle = result.StretchAngle;
 
             float totalScale = result.Scale * (_config != null ? _config.CursorScale : 1.0f);
-            int needed = Math.Max(512, Math.Min(4096, ((int)(64 * totalScale * 2.2f + 127) / 128) * 128));
+            int needed = Math.Max(768, Math.Min(4096, ((int)(64 * totalScale * 2.2f + 127) / 128) * 128));
             EnsureDIB(needed);
 
             if (_dibGraphics != null && _hdcMem != IntPtr.Zero && _hdcScreen != IntPtr.Zero)
@@ -513,7 +503,7 @@ namespace DynamicCursors
             }
 
             // Silently re-assert topmost order periodically without SWP_SHOWWINDOW
-            if (++_topmostCounter >= 240)
+            if (++_topmostCounter >= 60)
             {
                 _topmostCounter = 0;
                 if (IsHandleCreated && !IsDisposed)

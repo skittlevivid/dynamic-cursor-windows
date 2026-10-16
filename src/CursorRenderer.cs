@@ -14,16 +14,38 @@ namespace DynamicCursors
         public List<Bitmap> Frames = new List<Bitmap>();
         public int HotspotX;
         public int HotspotY;
+        public int NativeWidth = 32;
+        public int NativeHeight = 32;
         public bool AllowRotation;
         public int FrameDelayMs = 60;
         private long _lastFrameTick = 0;
         private int _currentFrame = 0;
 
-        public CursorAsset(List<Bitmap> frames, int hx, int hy, bool allowRot)
+        public float BaseHotspotX
+        {
+            get
+            {
+                if (NativeWidth <= 0) return HotspotX;
+                return HotspotX * (32.0f / NativeWidth);
+            }
+        }
+
+        public float BaseHotspotY
+        {
+            get
+            {
+                if (NativeHeight <= 0) return HotspotY;
+                return HotspotY * (32.0f / NativeHeight);
+            }
+        }
+
+        public CursorAsset(List<Bitmap> frames, int hx, int hy, int nw, int nh, bool allowRot)
         {
             Frames = frames;
             HotspotX = hx;
             HotspotY = hy;
+            NativeWidth = nw > 0 ? nw : 32;
+            NativeHeight = nh > 0 ? nh : 32;
             AllowRotation = allowRot;
         }
 
@@ -65,6 +87,12 @@ namespace DynamicCursors
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern IntPtr LoadCursorFromFile(string lpFileName);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr LoadImage(IntPtr hInst, string name, uint type, int cx, int cy, uint fuLoad);
+
+        public const uint IMAGE_CURSOR = 2;
+        public const uint LR_LOADFROMFILE = 0x0010;
 
         [DllImport("user32.dll")]
         private static extern bool GetIconInfo(IntPtr hIcon, out CursorHook.ICONINFO piconinfo);
@@ -210,53 +238,53 @@ namespace DynamicCursors
                 string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cursors");
                 if (!Directory.Exists(dir)) return;
 
-                // Flexible multi-candidate lookup for .cur, .ani, and .png
+                // Flexible multi-candidate lookup for .cur, .ani, and .png (loads highest resolution frame up to 128x128)
                 _assets[CursorShapeType.Arrow] = LoadCurAniPng(dir,
-                    new string[] { "arrow.cur", "arrow.ani", "pointer.cur", "pointer.ani", "normal.cur", "normal.ani", "default.cur", "pointer.png", "arrow.png" },
+                    new string[] { "arrow.cur", "arrow.ani", "arrow_xl.cur", "arrow_l.cur", "pointer.cur", "pointer.ani", "normal.cur", "normal.ani", "default.cur", "pointer.png", "arrow.png" },
                     4, 4, true);
 
                 _assets[CursorShapeType.Hand] = LoadCurAniPng(dir,
-                    new string[] { "link.cur", "link.ani", "hand.cur", "hand.ani", "pointer.cur", "link.png", "hand.png" },
+                    new string[] { "link.cur", "link.ani", "link_xl.cur", "link_l.cur", "hand.cur", "hand.ani", "pointer.cur", "link.png", "hand.png" },
                     10, 2, true);
 
                 _assets[CursorShapeType.IBeam] = LoadCurAniPng(dir,
-                    new string[] { "ibeam.cur", "ibeam.ani", "text.cur", "text.ani", "beam.cur", "text.png", "ibeam.png" },
+                    new string[] { "ibeam.cur", "ibeam.ani", "ibeam_xl.cur", "ibeam_l.cur", "text.cur", "text.ani", "beam.cur", "text.png", "ibeam.png" },
                     15, 15, false);
 
                 _assets[CursorShapeType.Cross] = LoadCurAniPng(dir,
-                    new string[] { "cross.cur", "cross.ani", "crosshair.cur", "crosshair.ani" },
+                    new string[] { "cross.cur", "cross.ani", "cross_xl.cur", "cross_l.cur", "crosshair.cur", "crosshair.ani" },
                     15, 15, false);
 
                 _assets[CursorShapeType.SizeWE] = LoadCurAniPng(dir,
-                    new string[] { "ew.cur", "ew.ani", "sizewe.cur", "horz.cur", "horz.png" },
+                    new string[] { "ew.cur", "ew.ani", "ew_xl.cur", "ew_l.cur", "sizewe.cur", "horz.cur", "horz.png" },
                     15, 15, false);
 
                 _assets[CursorShapeType.SizeNS] = LoadCurAniPng(dir,
-                    new string[] { "ns.cur", "ns.ani", "sizens.cur", "vert.cur", "vert.png" },
+                    new string[] { "ns.cur", "ns.ani", "ns_xl.cur", "ns_l.cur", "sizens.cur", "vert.cur", "vert.png" },
                     15, 15, false);
 
                 _assets[CursorShapeType.SizeNWSE] = LoadCurAniPng(dir,
-                    new string[] { "nwse.cur", "nwse.ani", "sizenwse.cur" },
+                    new string[] { "nwse.cur", "nwse.ani", "nwse_xl.cur", "nwse_l.cur", "sizenwse.cur" },
                     15, 15, false);
 
                 _assets[CursorShapeType.SizeNESW] = LoadCurAniPng(dir,
-                    new string[] { "nesw.cur", "nesw.ani", "sizenesw.cur" },
+                    new string[] { "nesw.cur", "nesw.ani", "nesw_xl.cur", "nesw_l.cur", "sizenesw.cur" },
                     15, 15, false);
 
                 _assets[CursorShapeType.SizeAll] = LoadCurAniPng(dir,
-                    new string[] { "move.cur", "move.ani", "sizeall.cur", "size.cur" },
+                    new string[] { "move.cur", "move.ani", "move_xl.cur", "move_l.cur", "sizeall.cur", "size.cur" },
                     15, 15, false);
 
                 _assets[CursorShapeType.Wait] = LoadCurAniPng(dir,
-                    new string[] { "busy.ani", "busy.cur", "working.ani", "working.cur", "wait.ani", "wait.cur" },
+                    new string[] { "working.ani", "busy.ani", "working_xl.ani", "working_l.ani", "busy.cur", "working.cur", "wait.ani", "wait.cur" },
                     15, 15, false);
 
                 _assets[CursorShapeType.No] = LoadCurAniPng(dir,
-                    new string[] { "unavail.cur", "unavail.ani", "no.cur", "no.ani" },
+                    new string[] { "unavail.cur", "unavail.ani", "unavail_xl.cur", "unavail_l.cur", "no.cur", "no.ani" },
                     15, 15, false);
 
                 _assets[CursorShapeType.Help] = LoadCurAniPng(dir,
-                    new string[] { "helpsel.cur", "helpsel.ani", "help.cur", "help.ani" },
+                    new string[] { "helpsel.cur", "helpsel.ani", "helpsel_xl.cur", "helpsel_l.cur", "help.cur", "help.ani" },
                     4, 4, true);
             }
         }
@@ -272,7 +300,13 @@ namespace DynamicCursors
 
                 if (ext == ".cur" || ext == ".ani")
                 {
-                    IntPtr hCur = LoadCursorFromFile(path);
+                    // Load high-resolution 128x128 image if available in the file
+                    IntPtr hCur = LoadImage(IntPtr.Zero, path, IMAGE_CURSOR, 128, 128, LR_LOADFROMFILE);
+                    if (hCur == IntPtr.Zero)
+                    {
+                        hCur = LoadCursorFromFile(path);
+                    }
+
                     if (hCur != IntPtr.Zero)
                     {
                         int curW = 32;
@@ -325,7 +359,7 @@ namespace DynamicCursors
 
                         if (frames.Count > 0)
                         {
-                            return new CursorAsset(frames, hx, hy, allowRot);
+                            return new CursorAsset(frames, hx, hy, curW, curH, allowRot);
                         }
                     }
                 }
@@ -341,7 +375,7 @@ namespace DynamicCursors
                                 g.DrawImage(img, 0, 0);
                             }
                             List<Bitmap> frames = new List<Bitmap> { bmp };
-                            return new CursorAsset(frames, fallbackHx, fallbackHy, allowRot);
+                            return new CursorAsset(frames, fallbackHx, fallbackHy, img.Width, img.Height, allowRot);
                         }
                     }
                     catch { }
@@ -402,7 +436,16 @@ namespace DynamicCursors
             Bitmap currentFrame = asset != null ? asset.GetCurrentFrame(nowMs) : null;
             if (currentFrame != null)
             {
-                g.DrawImage(currentFrame, center - asset.HotspotX, center - asset.HotspotY);
+                float hx = asset.BaseHotspotX;
+                float hy = asset.BaseHotspotY;
+                float baseW = 32.0f;
+                float baseH = 32.0f;
+                if (asset.NativeWidth > 0 && asset.NativeHeight > 0 && asset.NativeWidth != asset.NativeHeight)
+                {
+                    baseH = 32.0f * ((float)asset.NativeHeight / asset.NativeWidth);
+                }
+                RectangleF destRect = new RectangleF(center - hx, center - hy, baseW, baseH);
+                g.DrawImage(currentFrame, destRect);
             }
             else
             {
