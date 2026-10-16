@@ -27,6 +27,7 @@ namespace DynamicCursors
 
             _overlay.RequestExit += ExitApp;
             _overlay.ToggleEnabled += (en) => UpdateMenuState();
+            _overlay.RequestShowSettings += () => OpenSettings();
 
             _trayIcon = new NotifyIcon
             {
@@ -40,6 +41,12 @@ namespace DynamicCursors
             UpdateMenuState();
 
             _overlay.Show();
+
+            try
+            {
+                _trayIcon.ShowBalloonTip(2500, "dynamic cursors", "active in system tray (double-click to open settings)", ToolTipIcon.Info);
+            }
+            catch { }
         }
 
         private Icon CreateTrayIcon()

@@ -15,6 +15,14 @@ namespace DynamicCursors
         [DllImport("kernel32.dll")]
         private static extern bool AttachConsole(int dwProcessId);
 
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const int HWND_BROADCAST = 0xffff;
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -22,6 +30,7 @@ namespace DynamicCursors
             {
                 try
                 {
+                    CursorHook.RestoreSystemCursors();
                     System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"),
                         e.ExceptionObject != null ? e.ExceptionObject.ToString() : "unknown unhandled exception");
                 }
@@ -71,7 +80,9 @@ namespace DynamicCursors
             {
                 if (!createdNew)
                 {
-                    MessageBox.Show("dynamic cursors is already running! check your system tray (notification area).", "dynamic cursors", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    // Existing instance is running: tell it to pop up settings window immediately!
+                    uint showMsg = RegisterWindowMessage("DYNAMIC_CURSORS_SHOW_SETTINGS");
+                    PostMessage((IntPtr)HWND_BROADCAST, showMsg, IntPtr.Zero, IntPtr.Zero);
                     return;
                 }
 

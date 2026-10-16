@@ -357,6 +357,20 @@ namespace DynamicCursors
             }
         }
 
+        public static bool IsGameProcess(uint pid)
+        {
+            if (pid == 0) return false;
+            try
+            {
+                string pname = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
+                return pname.Contains("roblox") || pname.Contains("minecraft") || pname.Contains("javaw");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static bool IsShellOrMenuClass(string cls)
         {
             if (string.IsNullOrEmpty(cls)) return false;

@@ -157,12 +157,18 @@ namespace DynamicCursors
         private float _lastScale = float.MinValue;
         private float _lastStretchX = float.MinValue;
         private float _lastStretchAngle = float.MinValue;
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        public static readonly uint WM_SHOW_SETTINGS = RegisterWindowMessage("DYNAMIC_CURSORS_SHOW_SETTINGS");
+
         private int _topmostCounter = 0;
         private bool _overlayCleared = false;
-        private bool _wasInShellOrMenu = false;
+        private bool _wasInSpecialApp = false;
         private long _snipCooldownUntilMs = 0;
 
         public event Action RequestExit;
+        public event Action RequestShowSettings;
         public event Action<bool> ToggleEnabled;
 
         public OverlayWindow(AppConfig config)
@@ -203,13 +209,6 @@ namespace DynamicCursors
             // Prevents Explorer from flickering or fighting over taskbar z-order
             SetProp(Handle, "NonRudeHWND", new IntPtr(1));
 
-            // Hardware-level exclude overlay from screenshots, snipping tool, OBS and video capture
-            try
-            {
-                SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
-            }
-            catch { }
-
             // Register Hotkeys: Ctrl+Alt+Q (Quit), Ctrl+Alt+D (Toggle)
             _hotkeysRegistered = RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT, (uint)Keys.Q) &&
                                  RegisterHotKey(Handle, 2, MOD_CONTROL | MOD_ALT, (uint)Keys.D);
@@ -220,6 +219,12 @@ namespace DynamicCursors
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == (int)WM_SHOW_SETTINGS)
+            {
+                if (RequestShowSettings != null) RequestShowSettings();
+                return;
+            }
+
             if (m.Msg == WM_HOTKEY)
             {
                 int id = m.WParam.ToInt32();
@@ -442,7 +447,7 @@ namespace DynamicCursors
                 ResetPhysics();
                 ClearOverlay();
                 CursorHook.RestoreSystemCursors();
-                _wasInShellOrMenu = true;
+                _wasInSpecialApp = true;
                 return;
             }
 
@@ -451,7 +456,7 @@ namespace DynamicCursors
                 ResetPhysics();
                 ClearOverlay();
                 CursorHook.RestoreSystemCursors();
-                _wasInShellOrMenu = true;
+                _wasInSpecialApp = true;
                 return;
             }
 
@@ -460,13 +465,26 @@ namespace DynamicCursors
             {
                 uint fgPid;
                 GetWindowThreadProcessId(fg, out fgPid);
-                if (fgPid != 0 && CursorHook.IsCaptureProcess(fgPid))
+                if (fgPid != 0)
                 {
-                    ResetPhysics();
-                    ClearOverlay();
-                    CursorHook.RestoreSystemCursors();
-                    _wasInShellOrMenu = true;
-                    return;
+                    if (CursorHook.IsCaptureProcess(fgPid) || CursorHook.IsGameProcess(fgPid))
+                    {
+                        ResetPhysics();
+                        ClearOverlay();
+                        CursorHook.RestoreSystemCursors();
+                        _wasInSpecialApp = true;
+                        return;
+                    }
+                }
+            }
+
+            if (_wasInSpecialApp)
+            {
+                _wasInSpecialApp = false;
+                ResetPhysics();
+                if (_config.HideSystemCursor)
+                {
+                    CursorHook.ForceHideSystemCursors();
                 }
             }
 
@@ -477,28 +495,6 @@ namespace DynamicCursors
             {
                 ClearOverlay();
                 return;
-            }
-
-            bool inShellOrMenu = CursorHook.IsShellOrMenuWindow(pt);
-            if (inShellOrMenu)
-            {
-                ResetPhysics();
-                if (!_wasInShellOrMenu)
-                {
-                    _wasInShellOrMenu = true;
-                    ClearOverlay();
-                    CursorHook.RestoreSystemCursors();
-                }
-                return;
-            }
-            else if (_wasInShellOrMenu)
-            {
-                _wasInShellOrMenu = false;
-                ResetPhysics();
-                if (_config.HideSystemCursor)
-                {
-                    CursorHook.ForceHideSystemCursors();
-                }
             }
 
             _overlayCleared = false;
