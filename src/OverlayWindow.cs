@@ -93,9 +93,22 @@ namespace DynamicCursors
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        private static extern bool SetProp(IntPtr hWnd, string lpString, IntPtr hData);
 
-        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+        private const int VK_SNAPSHOT = 0x2C;
+        private const int VK_SHIFT = 0x10;
+        private const int VK_LWIN = 0x5B;
+        private const int VK_RWIN = 0x5C;
+        private const int VK_S = 0x53;
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -142,6 +155,8 @@ namespace DynamicCursors
         private int _topmostCounter = 0;
         private bool _overlayCleared = false;
         private long _lastForceHideCheckMs = 0;
+        private long _screenshotHideUntilMs = 0;
+        private static readonly System.Collections.Generic.Dictionary<uint, bool> _capturePidCache = new System.Collections.Generic.Dictionary<uint, bool>();
 
         public event Action RequestExit;
         public event Action<bool> ToggleEnabled;
@@ -160,7 +175,7 @@ namespace DynamicCursors
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(-1000, -1000);
-            Size = new Size(512, 512);
+            Size = new Size(384, 384);
         }
 
         protected override CreateParams CreateParams
@@ -181,12 +196,8 @@ namespace DynamicCursors
         {
             base.OnHandleCreated(e);
 
-            // Exclude overlay from screen capture (Snipping Tool, Win+Shift+S, OBS, PrintScreen)
-            try
-            {
-                SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
-            }
-            catch { }
+            // Prevents Explorer from flickering or fighting over taskbar z-order
+            SetProp(Handle, "NonRudeHWND", new IntPtr(1));
 
             // Register Hotkeys: Ctrl+Alt+Q (Quit), Ctrl+Alt+D (Toggle)
             _hotkeysRegistered = RegisterHotKey(Handle, 1, MOD_CONTROL | MOD_ALT, (uint)Keys.Q) &&
@@ -270,7 +281,7 @@ namespace DynamicCursors
 
         private void EnsureDIB(int size)
         {
-            size = Math.Max(768, size);
+            size = Math.Max(384, size);
             if (_hDIB != IntPtr.Zero && _dibSize >= size) return;
 
             CleanupDIB();
@@ -401,8 +412,61 @@ namespace DynamicCursors
             }
         }
 
+        private static bool IsScreenCaptureProcess(uint pid)
+        {
+            bool isCapture;
+            lock (_capturePidCache)
+            {
+                if (!_capturePidCache.TryGetValue(pid, out isCapture))
+                {
+                    try
+                    {
+                        string name = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
+                        isCapture = (name.Contains("screenclipping") || name.Contains("snippingtool") || name.Contains("screensketch"));
+                    }
+                    catch
+                    {
+                        isCapture = false;
+                    }
+                    if (_capturePidCache.Count > 100) _capturePidCache.Clear();
+                    _capturePidCache[pid] = isCapture;
+                }
+            }
+            return isCapture;
+        }
+
         private void ProcessFrame(long nowMs)
         {
+            // Auto-hide when taking a screenshot (PrintScreen or Win+Shift+S)
+            if ((GetAsyncKeyState(VK_SNAPSHOT) & 0x8000) != 0)
+            {
+                _screenshotHideUntilMs = nowMs + 400;
+            }
+            else if (((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0) &&
+                     ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) &&
+                     ((GetAsyncKeyState(VK_S) & 0x8000) != 0))
+            {
+                _screenshotHideUntilMs = nowMs + 1000;
+            }
+
+            if (nowMs < _screenshotHideUntilMs)
+            {
+                ClearOverlay();
+                return;
+            }
+
+            IntPtr fg = GetForegroundWindow();
+            if (fg != IntPtr.Zero)
+            {
+                uint fgPid;
+                GetWindowThreadProcessId(fg, out fgPid);
+                if (fgPid != 0 && IsScreenCaptureProcess(fgPid))
+                {
+                    ClearOverlay();
+                    return;
+                }
+            }
+
             CursorHook.POINT pt;
             CursorShapeType shape;
             IntPtr hCursor;
@@ -480,7 +544,7 @@ namespace DynamicCursors
             _lastStretchAngle = result.StretchAngle;
 
             float totalScale = result.Scale * (_config != null ? _config.CursorScale : 1.0f);
-            int needed = Math.Max(768, Math.Min(4096, ((int)(64 * totalScale * 2.2f + 127) / 128) * 128));
+            int needed = Math.Max(384, Math.Min(2048, ((int)(64 * totalScale * 2.2f + 127) / 128) * 128));
             EnsureDIB(needed);
 
             if (_dibGraphics != null && _hdcMem != IntPtr.Zero && _hdcScreen != IntPtr.Zero)
@@ -503,7 +567,7 @@ namespace DynamicCursors
             }
 
             // Silently re-assert topmost order periodically without SWP_SHOWWINDOW
-            if (++_topmostCounter >= 60)
+            if (++_topmostCounter >= 240)
             {
                 _topmostCounter = 0;
                 if (IsHandleCreated && !IsDisposed)
