@@ -247,6 +247,8 @@ namespace DynamicCursors
             base.WndProc(ref m);
         }
 
+        public CursorRenderer Renderer { get { return _renderer; } }
+
         public void ReloadAssets()
         {
             _renderer.LoadCustomAssets(_config.CursorPack);

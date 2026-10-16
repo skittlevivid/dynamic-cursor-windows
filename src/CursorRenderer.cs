@@ -6,6 +6,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Microsoft.Win32;
 
 namespace DynamicCursors
 {
@@ -23,20 +24,12 @@ namespace DynamicCursors
 
         public float BaseHotspotX
         {
-            get
-            {
-                if (NativeWidth <= 0) return HotspotX;
-                return HotspotX * (32.0f / NativeWidth);
-            }
+            get { return HotspotX; }
         }
 
         public float BaseHotspotY
         {
-            get
-            {
-                if (NativeHeight <= 0) return HotspotY;
-                return HotspotY * (32.0f / NativeHeight);
-            }
+            get { return HotspotY; }
         }
 
         public CursorAsset(List<Bitmap> frames, int hx, int hy, int nw, int nh, bool allowRot)
@@ -153,9 +146,12 @@ namespace DynamicCursors
             SetupWatcher();
         }
 
+        public const string PACK_WINDOWS_AUTO = "Windows Active Scheme (Auto)";
+        public const string PACK_CUSTOM_ROOT = "Custom (cursors/ folder)";
+
         public static List<string> GetAvailablePacks()
         {
-            List<string> packs = new List<string> { "Default (Root)" };
+            List<string> packs = new List<string> { PACK_WINDOWS_AUTO, PACK_CUSTOM_ROOT };
             try
             {
                 string dir = Path.Combine(AppConfig.GetAppDir(), "cursors");
@@ -173,6 +169,72 @@ namespace DynamicCursors
             }
             catch { }
             return packs;
+        }
+
+        public Bitmap GetPreviewFrame(CursorShapeType shape)
+        {
+            lock (_assets)
+            {
+                CursorAsset asset;
+                if (_assets.TryGetValue(shape, out asset) && asset != null)
+                {
+                    return asset.GetCurrentFrame(0);
+                }
+                if (_assets.TryGetValue(CursorShapeType.Arrow, out asset) && asset != null)
+                {
+                    return asset.GetCurrentFrame(0);
+                }
+            }
+            return null;
+        }
+
+        public bool GetAssetInfo(CursorShapeType shape, out int width, out int height, out int hx, out int hy)
+        {
+            width = 32;
+            height = 32;
+            hx = 4;
+            hy = 4;
+            lock (_assets)
+            {
+                CursorAsset asset;
+                if ((_assets.TryGetValue(shape, out asset) && asset != null) ||
+                    (_assets.TryGetValue(CursorShapeType.Arrow, out asset) && asset != null))
+                {
+                    width = asset.NativeWidth;
+                    height = asset.NativeHeight;
+                    hx = asset.HotspotX;
+                    hy = asset.HotspotY;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static void GetActiveSchemeInfo(out string schemeName, out string arrowPath)
+        {
+            schemeName = "Windows Default";
+            arrowPath = "";
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Cursors"))
+                {
+                    if (key != null)
+                    {
+                        object def = key.GetValue("");
+                        if (def != null && !string.IsNullOrEmpty(def.ToString().Trim()))
+                        {
+                            schemeName = def.ToString().Trim();
+                        }
+                        object arrow = key.GetValue("Arrow");
+                        if (arrow != null)
+                        {
+                            string p = Environment.ExpandEnvironmentVariables(arrow.ToString().Trim());
+                            if (File.Exists(p)) arrowPath = p;
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         public void EnsureCanvasSize(int neededSize)
@@ -262,11 +324,21 @@ namespace DynamicCursors
                 }
                 _assets.Clear();
 
+                // If user selected Windows Active Scheme (or default auto) -> adapt directly to active Windows cursors!
+                if (string.IsNullOrEmpty(_currentPack) ||
+                    _currentPack.Equals(PACK_WINDOWS_AUTO, StringComparison.OrdinalIgnoreCase) ||
+                    _currentPack.Equals("auto", StringComparison.OrdinalIgnoreCase))
+                {
+                    LoadWindowsSchemeAssets();
+                    return;
+                }
+
                 string baseDir = Path.Combine(AppConfig.GetAppDir(), "cursors");
                 if (!Directory.Exists(baseDir)) return;
 
                 string packDir = null;
-                if (!string.IsNullOrEmpty(_currentPack) && !_currentPack.Equals("Default (Root)", StringComparison.OrdinalIgnoreCase))
+                if (!_currentPack.Equals(PACK_CUSTOM_ROOT, StringComparison.OrdinalIgnoreCase) &&
+                    !_currentPack.Equals("Default (Root)", StringComparison.OrdinalIgnoreCase))
                 {
                     string target = Path.Combine(baseDir, _currentPack);
                     if (Directory.Exists(target))
@@ -326,6 +398,94 @@ namespace DynamicCursors
             }
         }
 
+        private void LoadWindowsSchemeAssets()
+        {
+            string winCursors = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Cursors");
+            string baseDir = Path.Combine(AppConfig.GetAppDir(), "cursors");
+
+            Dictionary<string, string> regMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Cursors"))
+                {
+                    if (key != null)
+                    {
+                        foreach (string valName in key.GetValueNames())
+                        {
+                            object val = key.GetValue(valName);
+                            if (val != null)
+                            {
+                                string str = Environment.ExpandEnvironmentVariables(val.ToString().Trim());
+                                if (!string.IsNullOrEmpty(str) && File.Exists(str))
+                                {
+                                    regMap[valName] = str;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            Func<string, string[], string> resolve = (regKey, candidates) =>
+            {
+                string p;
+                if (regMap.TryGetValue(regKey, out p) && File.Exists(p)) return p;
+                foreach (var c in candidates)
+                {
+                    if (!string.IsNullOrEmpty(baseDir))
+                    {
+                        string bp = Path.Combine(baseDir, c);
+                        if (File.Exists(bp)) return bp;
+                    }
+                    if (!string.IsNullOrEmpty(winCursors))
+                    {
+                        string wp = Path.Combine(winCursors, c);
+                        if (File.Exists(wp)) return wp;
+                    }
+                }
+                return null;
+            };
+
+            // Load all 12 shapes from active Windows Scheme
+            string arrow = resolve("Arrow", new string[] { "Normal Select.cur", "arrow.cur", "aero_arrow.cur" });
+            if (arrow != null) _assets[CursorShapeType.Arrow] = LoadSingleFile(arrow, 4, 4, true);
+
+            string hand = resolve("Hand", new string[] { "Link Select.cur", "link.cur", "aero_link.cur" });
+            if (hand != null) _assets[CursorShapeType.Hand] = LoadSingleFile(hand, 10, 2, true);
+
+            string ibeam = resolve("IBeam", new string[] { "Text Select.cur", "ibeam.cur", "beam_r.cur" });
+            if (ibeam != null) _assets[CursorShapeType.IBeam] = LoadSingleFile(ibeam, 15, 15, false);
+
+            string cross = resolve("Crosshair", new string[] { "Precision Select.cur", "cross.cur", "cross_r.cur" });
+            if (cross != null) _assets[CursorShapeType.Cross] = LoadSingleFile(cross, 15, 15, false);
+
+            string sizewe = resolve("SizeWE", new string[] { "Horizontal Resize.cur", "ew.cur", "aero_ew.cur" });
+            if (sizewe != null) _assets[CursorShapeType.SizeWE] = LoadSingleFile(sizewe, 15, 15, false);
+
+            string sizens = resolve("SizeNS", new string[] { "Vertical Resize.cur", "ns.cur", "aero_ns.cur" });
+            if (sizens != null) _assets[CursorShapeType.SizeNS] = LoadSingleFile(sizens, 15, 15, false);
+
+            string sizenwse = resolve("SizeNWSE", new string[] { "Diagonal Resize 1.cur", "nwse.cur", "aero_nwse.cur" });
+            if (sizenwse != null) _assets[CursorShapeType.SizeNWSE] = LoadSingleFile(sizenwse, 15, 15, false);
+
+            string sizenesw = resolve("SizeNESW", new string[] { "Diagonal Resize 2.cur", "nesw.cur", "aero_nesw.cur" });
+            if (sizenesw != null) _assets[CursorShapeType.SizeNESW] = LoadSingleFile(sizenesw, 15, 15, false);
+
+            string sizeall = resolve("SizeAll", new string[] { "Move.cur", "move.cur", "aero_move.cur" });
+            if (sizeall != null) _assets[CursorShapeType.SizeAll] = LoadSingleFile(sizeall, 15, 15, false);
+
+            string wait = resolve("Wait", new string[] { "Busy.ani", "busy.ani", "aero_busy.ani", "Working In Background.ani", "working.ani" });
+            if (wait == null) wait = resolve("AppStarting", new string[] { "Working In Background.ani", "working.ani", "aero_working.ani" });
+            if (wait != null) _assets[CursorShapeType.Wait] = LoadSingleFile(wait, 15, 15, false);
+
+            string no = resolve("No", new string[] { "Unavailable.cur", "unavail.cur", "aero_unavail.cur" });
+            if (no != null) _assets[CursorShapeType.No] = LoadSingleFile(no, 15, 15, false);
+
+            string help = resolve("Help", new string[] { "Help Select.cur", "helpsel.cur", "aero_helpsel.cur" });
+            if (help != null) _assets[CursorShapeType.Help] = LoadSingleFile(help, 4, 4, true);
+        }
+
         private static string FindFileCaseInsensitive(string dir, string candidate)
         {
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return null;
@@ -353,101 +513,105 @@ namespace DynamicCursors
             foreach (string file in candidates)
             {
                 string path = null;
-                if (!string.IsNullOrEmpty(packDir))
+                if (!string.IsNullOrEmpty(packDir)) path = FindFileCaseInsensitive(packDir, file);
+                if (string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(baseDir)) path = FindFileCaseInsensitive(baseDir, file);
+
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
                 {
-                    path = FindFileCaseInsensitive(packDir, file);
+                    var asset = LoadSingleFile(path, fallbackHx, fallbackHy, allowRot);
+                    if (asset != null) return asset;
                 }
-                if (string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(baseDir))
+            }
+            return null;
+        }
+
+        private CursorAsset LoadSingleFile(string path, int fallbackHx, int fallbackHy, bool allowRot)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+
+            if (ext == ".cur" || ext == ".ani")
+            {
+                // Load natural size cursor first, don't force nearest-neighbor 128x128 stretch
+                IntPtr hCur = LoadImage(IntPtr.Zero, path, IMAGE_CURSOR, 0, 0, LR_LOADFROMFILE);
+                if (hCur == IntPtr.Zero)
                 {
-                    path = FindFileCaseInsensitive(baseDir, file);
+                    hCur = LoadCursorFromFile(path);
                 }
 
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
-
-                string ext = Path.GetExtension(path).ToLowerInvariant();
-
-                if (ext == ".cur" || ext == ".ani")
+                if (hCur != IntPtr.Zero)
                 {
-                    // Load high-resolution 128x128 image if available in the file
-                    IntPtr hCur = LoadImage(IntPtr.Zero, path, IMAGE_CURSOR, 128, 128, LR_LOADFROMFILE);
-                    if (hCur == IntPtr.Zero)
+                    int curW = 32;
+                    int curH = 32;
+                    int hx = fallbackHx;
+                    int hy = fallbackHy;
+                    CursorHook.ICONINFO ii;
+                    if (GetIconInfo(hCur, out ii))
                     {
-                        hCur = LoadCursorFromFile(path);
+                        hx = ii.xHotspot;
+                        hy = ii.yHotspot;
+
+                        BITMAP bm;
+                        if (ii.hbmColor != IntPtr.Zero)
+                        {
+                            if (GetObject(ii.hbmColor, Marshal.SizeOf(typeof(BITMAP)), out bm) != 0)
+                            {
+                                curW = Math.Max(16, bm.bmWidth);
+                                curH = Math.Max(16, bm.bmHeight);
+                            }
+                            DeleteObject(ii.hbmColor);
+                        }
+                        else if (ii.hbmMask != IntPtr.Zero)
+                        {
+                            if (GetObject(ii.hbmMask, Marshal.SizeOf(typeof(BITMAP)), out bm) != 0)
+                            {
+                                curW = Math.Max(16, bm.bmWidth);
+                                curH = Math.Max(16, bm.bmHeight / 2);
+                            }
+                        }
+                        if (ii.hbmMask != IntPtr.Zero) DeleteObject(ii.hbmMask);
                     }
 
-                    if (hCur != IntPtr.Zero)
+                    List<Bitmap> frames = new List<Bitmap>();
+                    for (uint i = 0; i < 120; i++)
                     {
-                        int curW = 32;
-                        int curH = 32;
-                        int hx = fallbackHx;
-                        int hy = fallbackHy;
-                        CursorHook.ICONINFO ii;
-                        if (GetIconInfo(hCur, out ii))
+                        Bitmap bmp = new Bitmap(curW, curH, PixelFormat.Format32bppPArgb);
+                        using (Graphics g = Graphics.FromImage(bmp))
                         {
-                            hx = ii.xHotspot;
-                            hy = ii.yHotspot;
-
-                            BITMAP bm;
-                            if (ii.hbmColor != IntPtr.Zero)
-                            {
-                                if (GetObject(ii.hbmColor, Marshal.SizeOf(typeof(BITMAP)), out bm) != 0)
-                                {
-                                    curW = Math.Max(16, bm.bmWidth);
-                                    curH = Math.Max(16, bm.bmHeight);
-                                }
-                                DeleteObject(ii.hbmColor);
-                            }
-                            else if (ii.hbmMask != IntPtr.Zero)
-                            {
-                                if (GetObject(ii.hbmMask, Marshal.SizeOf(typeof(BITMAP)), out bm) != 0)
-                                {
-                                    curW = Math.Max(16, bm.bmWidth);
-                                    curH = Math.Max(16, bm.bmHeight / 2);
-                                }
-                            }
-                            if (ii.hbmMask != IntPtr.Zero) DeleteObject(ii.hbmMask);
+                            IntPtr hdc = g.GetHdc();
+                            bool ok = DrawIconEx(hdc, 0, 0, hCur, curW, curH, i, IntPtr.Zero, DI_NORMAL);
+                            g.ReleaseHdc(hdc);
+                            if (!ok) { bmp.Dispose(); break; }
                         }
+                        frames.Add(bmp);
+                        if (ext == ".cur") break; // static cursor only needs 1 frame
+                    }
 
-                        List<Bitmap> frames = new List<Bitmap>();
-                        for (uint i = 0; i < 120; i++)
-                        {
-                            Bitmap bmp = new Bitmap(curW, curH, PixelFormat.Format32bppPArgb);
-                            using (Graphics g = Graphics.FromImage(bmp))
-                            {
-                                IntPtr hdc = g.GetHdc();
-                                bool ok = DrawIconEx(hdc, 0, 0, hCur, curW, curH, i, IntPtr.Zero, DI_NORMAL);
-                                g.ReleaseHdc(hdc);
-                                if (!ok) { bmp.Dispose(); break; }
-                            }
-                            frames.Add(bmp);
-                            if (ext == ".cur") break; // static cursor only needs 1 frame
-                        }
+                    DestroyIcon(hCur);
 
-                        DestroyIcon(hCur);
-
-                        if (frames.Count > 0)
-                        {
-                            return new CursorAsset(frames, hx, hy, curW, curH, allowRot);
-                        }
+                    if (frames.Count > 0)
+                    {
+                        return new CursorAsset(frames, hx, hy, curW, curH, allowRot);
                     }
                 }
-                else if (ext == ".png")
+            }
+            else if (ext == ".png")
+            {
+                try
                 {
-                    try
+                    using (Image img = Image.FromFile(path))
                     {
-                        using (Image img = Image.FromFile(path))
+                        Bitmap bmp = new Bitmap(img.Width, img.Height, PixelFormat.Format32bppPArgb);
+                        using (Graphics g = Graphics.FromImage(bmp))
                         {
-                            Bitmap bmp = new Bitmap(img.Width, img.Height, PixelFormat.Format32bppPArgb);
-                            using (Graphics g = Graphics.FromImage(bmp))
-                            {
-                                g.DrawImage(img, 0, 0);
-                            }
-                            List<Bitmap> frames = new List<Bitmap> { bmp };
-                            return new CursorAsset(frames, fallbackHx, fallbackHy, img.Width, img.Height, allowRot);
+                            g.DrawImage(img, 0, 0);
                         }
+                        List<Bitmap> frames = new List<Bitmap> { bmp };
+                        return new CursorAsset(frames, fallbackHx, fallbackHy, img.Width, img.Height, allowRot);
                     }
-                    catch { }
                 }
+                catch { }
             }
 
             return null;
@@ -506,14 +670,10 @@ namespace DynamicCursors
             Bitmap currentFrame = asset != null ? asset.GetCurrentFrame(nowMs) : null;
             if (currentFrame != null)
             {
-                float hx = asset.BaseHotspotX;
-                float hy = asset.BaseHotspotY;
-                float baseW = 32.0f;
-                float baseH = 32.0f;
-                if (asset.NativeWidth > 0 && asset.NativeHeight > 0 && asset.NativeWidth != asset.NativeHeight)
-                {
-                    baseH = 32.0f * ((float)asset.NativeHeight / asset.NativeWidth);
-                }
+                float hx = asset.HotspotX;
+                float hy = asset.HotspotY;
+                float baseW = asset.NativeWidth > 0 ? (float)asset.NativeWidth : 32.0f;
+                float baseH = asset.NativeHeight > 0 ? (float)asset.NativeHeight : 32.0f;
                 RectangleF destRect = new RectangleF(center - hx, center - hy, baseW, baseH);
                 g.DrawImage(currentFrame, destRect);
             }
